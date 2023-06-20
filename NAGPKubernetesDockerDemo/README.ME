@@ -1,0 +1,25 @@
+Image pushed
+https://hub.docker.com/r/meghaprasadnagarro/nagpkubernetesdockerdemo
+
+Swagger Url to run application
+http://34.27.83.29:5932/index.html
+
+Curl for GET
+curl -X 'GET' \
+  'http://34.27.83.29:5932/api/Books'
+
+CURL to insert data
+curl -X 'POST' \
+  'http://34.27.83.29:5932/api/Books' \
+  -H 'accept: */*' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title": "Book 71",
+    "author": "Author 71",
+    "language": "French"  
+}' 
+
+ 
+Apply below Commands to get application running on the loadbalancer external IP url
+kubectl apply -f .\mysql-statefulset.yaml
+kubectl apply -f .\servicedeployment.yaml

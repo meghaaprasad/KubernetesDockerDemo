@@ -1,0 +1,153 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: mysql-storage
+  hostPath:
+    path: /var/lib/mysql
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: mysql-storage
+  resources:
+    requests:
+      storage: 250Mi
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-config
+data:
+  database_host: mysql-service
+  database_name: mydatabase
+  mysql_database: bookmanagementdb
+  database_user: root
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-secret
+type: Opaque
+data:
+  database_user: cm9vdA==
+  database_password: bG9jYWw=
+  mysql_root_password: bG9jYWw=
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-scripts
+data:
+  initdb.sql: |
+    CREATE DATABASE IF NOT EXISTS bookmanagementdb;
+    USE bookmanagementdb;
+
+    CREATE TABLE IF NOT EXISTS books (
+        id INT NOT NULL AUTO_INCREMENT,
+        title VARCHAR(255) NOT NULL,
+        author VARCHAR(255) NOT NULL,
+        language VARCHAR(255) DEFAULT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_by VARCHAR(255) DEFAULT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_by VARCHAR(255) DEFAULT NULL,
+        PRIMARY KEY (id)
+    );
+
+    INSERT INTO books (title, author, language)
+    SELECT 'Book 1', 'Author 1', 'English'
+    UNION ALL SELECT 'Book 2', 'Author 2', 'Hindi'
+    UNION ALL SELECT 'Book 3', 'Author 3', 'French'
+    UNION ALL SELECT 'Book 4', 'Author 4', 'French'
+    UNION ALL SELECT 'Book 5', 'Author 5', 'French'
+    UNION ALL SELECT 'Book 6', 'Author 6', 'French'
+    UNION ALL SELECT 'Book 7', 'Author 7', 'French'
+    UNION ALL SELECT 'Book 8', 'Author 8', 'French'
+    UNION ALL SELECT 'Book 9', 'Author 9', 'French'
+    UNION ALL SELECT 'Book 10', 'Author 10', 'French'
+    WHERE NOT EXISTS (
+        SELECT 1 FROM books
+    );
+
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+spec:
+  serviceName: mysql
+  replicas: 1
+  updateStrategy:
+    type: OnDelete
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:latest
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secret
+                  key: mysql_root_password
+            - name: MYSQL_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: db-config
+                  key: mysql_database
+          ports:
+            - containerPort: 3306
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+            - name: mysql-scripts-volume
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10 && mysql -h localhost -u root -p$MYSQL_ROOT_PASSWORD < /docker-entrypoint-initdb.d/initdb.sql"]    
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc-claim
+        - name: mysql-scripts-volume
+          configMap:
+            name: mysql-scripts
+---            
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  selector:
+    app: mysql
+  ports:
+    - protocol: TCP
+      port: 3306
+      targetPort: 3306
+  type: ClusterIP
